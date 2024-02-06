@@ -1,0 +1,7 @@
+void kernel vecinit(global float2 * dataset, global float2 * centroids, int k){
+    int i = get_global_id(0);
+    if(i >= k)return;
+    centroids[i].x = dataset[i].x;
+    centroids[i].y = dataset[i].y;
+    printf("dataset[%d]: %f %f\n",i, centroids[i].x, centroids[i].y);
+} 
