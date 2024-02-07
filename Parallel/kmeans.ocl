@@ -44,11 +44,10 @@ void kernel update_points(
     // for work-item specific elements we store them in private memory to reduce reads from global memory
     float2 p0 = dataset[gid];
     int assignment = assignments[gid];
-    // we load the centroid array into local memory, we have to do it once for each workgroup.
-    if(lid == 0)
-        for(int i=0;i<k;++i)
-                lmem_centroids[i] = centroids[i];
-    
+   
+    if(lid < k)
+        lmem_centroids[lid] = centroids[lid];
+
     barrier(CLK_LOCAL_MEM_FENCE);
     /*
     1st step: assign each point to a centroid. This is done by computing the eucgidean distance between the

@@ -51,9 +51,8 @@ void kernel update_points(
     float2 p1 = dataset[gid].zw;
     int assignment0 = assignments[gid*2];
     int assignment1 = assignments[gid*2+1];
-    if(lid == 0)
-        for(int i=0;i<k;++i)
-                lmem_centroids[i] = centroids[i];
+    if(lid < k)
+        lmem_centroids[lid] = centroids[lid];
     
     barrier(CLK_LOCAL_MEM_FENCE);
     /*

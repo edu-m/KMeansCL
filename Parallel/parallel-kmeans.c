@@ -14,7 +14,7 @@
 #define PRINT_ARRAY_TEST 0
 #define N_POINTS_RANDOM_DATA 2048
 #define RANDOM_DATA 0
-#define FILEPATH "..//data_large.csv"
+#define FILEPATH "..//data_original.csv"
 #define SUPPRESS_PRINT 0
 
 void error(char *what) {
