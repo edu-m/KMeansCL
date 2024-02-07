@@ -14,7 +14,7 @@
 #define PRINT_ARRAY_TEST 0
 #define N_POINTS_RANDOM_DATA 2048
 #define RANDOM_DATA 0
-#define FILEPATH "..//data_original.csv"
+#define FILEPATH "..//data_large.csv"
 #define SUPPRESS_PRINT 0
 
 void error(char *what) {
@@ -246,7 +246,6 @@ int main(int argc, char **argv) {
     printf("Cluster %d has %d point(s)\n", i, cluster_elements[i]);
 #endif
   printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
-
   printf("update points %f ms\n", runtime_ms(update_points_evt));
   printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
 }

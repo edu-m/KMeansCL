@@ -92,7 +92,6 @@ void kernel update_centroids(
     2nd step: calculate the average of all points belonging to each cluster to compute the new centroid
     */
     int gid = get_global_id(0);
-
     if(gid >= k) return; 
 
     if (cluster_elements[gid] > 0) 

@@ -1,3 +1,5 @@
+#define NO_BARRIER_TEST 0
+
 float euclidean_distance(float x0, float y0, float x1,
                             float y1) {
   return sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1));
@@ -19,28 +21,41 @@ inline void atomic_add_float2(global float2 * restrict dest, const float2 value)
 void kernel assign_centroids(global float4 *restrict dataset, global float2 *restrict centroids, const int k){
     int i = get_global_id(0);
     if (i >= k / 2) return;
-    centroids[i] = dataset[i].xy;
-    centroids[i+1] = dataset[i].zw;
+    centroids[i*2] = dataset[i].xy;
+    centroids[i*2+1] = dataset[i].zw;
     // printf("%f %f\n",centroids[i].x, centroids[i].y);
 }
 
 void kernel update_points(
-    global float4 * restrict dataset,
-    global float2 * restrict centroids,
+    global const float4 * restrict dataset,
+    global const float2 * restrict centroids,
     global int * restrict assignments,
     global float2 * restrict cluster_sum,
     global int * restrict cluster_elements,
+    local float2 * lmem_centroids,
     const int points,
     const int k
 ) {
     int gid = get_global_id(0);
+    int lid = get_local_id(0);
     if(gid >= points / 2) return;
+    // printf("%d",gid);
+
+    // wipe corresponding elements for both arrays to avoid 'memory' of past iterations
+    cluster_sum[gid*2] = 0.0f;
+    cluster_elements[gid*2] = 0;
+    cluster_sum[gid*2+1] = 0.0f;
+    cluster_elements[gid*2+1] = 0;
+    // for work-item specific elements we store them in private memory to reduce reads from global memory
     float2 p0 = dataset[gid].xy;
     float2 p1 = dataset[gid].zw;
-    cluster_sum[gid] = 0.0f;
-    cluster_elements[gid] = 0;
-    cluster_sum[gid+1] = 0.0f;
-    cluster_elements[gid+1] = 0;
+    int assignment0 = assignments[gid*2];
+    int assignment1 = assignments[gid*2+1];
+    if(lid == 0)
+        for(int i=0;i<k;++i)
+                lmem_centroids[i] = centroids[i];
+    
+    barrier(CLK_LOCAL_MEM_FENCE);
     /*
     1st step: assign each point to a centroid. This is done by computing the euclidean distance between the
               point and the centroid. We iterate this process for each point, for each centroid to find the optimal
@@ -51,24 +66,24 @@ void kernel update_points(
         // Compute distances and assign points to clusters
         float distance_p0 = euclidean_distance(
             p0.x, p0.y,
-            centroids[assignments[gid]].x, centroids[assignments[gid]].y
+            lmem_centroids[assignment0].x, lmem_centroids[assignment0].y
         );
 
         float distance_p1 = euclidean_distance(
             p1.x, p1.y,
-            centroids[assignments[gid+1]].x, centroids[assignments[gid+1]].y
+            lmem_centroids[assignment1].x, lmem_centroids[assignment1].y
         );
 
         for (int j = 0; j < k; ++j) {
-
+            // printf("%f %f",centroids[j].x,centroids[j].y);
             float ed_p0 = euclidean_distance(
                 p0.x, p0.y,
-                centroids[j].x, centroids[j].y
+                lmem_centroids[j].x, lmem_centroids[j].y
             );
 
             float ed_p1 = euclidean_distance(
                 p1.x, p1.y,
-                centroids[j].x, centroids[j].y
+                lmem_centroids[j].x, lmem_centroids[j].y
             );
             // printf("point %d has distance %f with centroid %d, current assignment is %d with distance %f",
             //               gid,            ed,              j,            assignments[gid],     distance);
@@ -76,34 +91,33 @@ void kernel update_points(
             if (ed_p0 < distance_p0) {
                 //printf("point %d (%f %f): cluster was updated from %d (%f %f) to %d (%f %f) with a reduction in distance of %f",gid,dataset[gid].x,dataset[gid].y,assignments[gid],centroids[assignments[gid]].x,centroids[assignments[gid]].y,j,centroids[j].x,centroids[j].y,distance-ed);
                 distance_p0 = ed_p0;
-                assignments[gid] = j;
+                assignment0 = assignments[gid*2] = j;
             }
             if (ed_p1 < distance_p1) {
                 //printf("point %d (%f %f): cluster was updated from %d (%f %f) to %d (%f %f) with a reduction in distance of %f",gid,dataset[gid].x,dataset[gid].y,assignments[gid],centroids[assignments[gid]].x,centroids[assignments[gid]].y,j,centroids[j].x,centroids[j].y,distance-ed);
                 distance_p1 = ed_p1;
-                assignments[gid+1] = j;
+                assignment1 = assignments[gid*2+1] = j;
             }
         }
 
-        atomic_add_float2(&cluster_sum[assignments[gid]], p0);
-        atomic_inc(&cluster_elements[assignments[gid]]);
+        atomic_add_float2(&cluster_sum[assignment0], p0);
+        atomic_inc(&cluster_elements[assignment0]);
 
-        atomic_add_float2(&cluster_sum[assignments[gid+1]], p1);
-        atomic_inc(&cluster_elements[assignments[gid+1]]);
+        atomic_add_float2(&cluster_sum[assignment1], p1);
+        atomic_inc(&cluster_elements[assignment1]);
     }
 
 
-void kernel update_centroids(global float4 * restrict dataset,
-                              global float2 * restrict centroids,
-                              global int * restrict assignments,
-                              global float2 * restrict cluster_sum,
-                              global int * restrict cluster_elements,
-                              const int points,
+void kernel update_centroids(global float2 * restrict centroids,
+                              global const float2 * restrict cluster_sum,
+                              global const int * restrict cluster_elements,
                               const int k) {
-                                
+    /*
+    2nd step: calculate the average of all points belonging to each cluster to compute the new centroid
+    */                 
     int gid = get_global_id(0);
     if(gid >= k) return; 
 
-    centroids[gid] = cluster_sum[gid] / (float)cluster_elements[gid];
-
+    if (cluster_elements[gid] > 0) 
+        centroids[gid] = cluster_sum[gid] / (float)cluster_elements[gid];
 }

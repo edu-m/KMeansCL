@@ -14,7 +14,7 @@
 #define PRINT_ARRAY_TEST 0
 #define N_POINTS_RANDOM_DATA 2048
 #define RANDOM_DATA 0
-#define FILEPATH "..//data_original.csv"
+#define FILEPATH "..//data_large.csv"
 #define SUPPRESS_PRINT 0
 
 void error(char *what) {
@@ -83,9 +83,11 @@ cl_event update_points(cl_command_queue que, cl_kernel points_kernel,
   ocl_check(err, "kmeans_kernel 4th arg set");
   err = clSetKernelArg(points_kernel, 4, sizeof(cl_mem), cluster_elements);
   ocl_check(err, "kmeans_kernel 5th arg set");
-  err = clSetKernelArg(points_kernel, 5, sizeof(cl_int), &points);
+err = clSetKernelArg(points_kernel, 5, sizeof(cl_float2)*k, NULL);
   ocl_check(err, "kmeans_kernel 6th arg set");
-  err = clSetKernelArg(points_kernel, 6, sizeof(cl_int), &k);
+  err = clSetKernelArg(points_kernel, 6, sizeof(cl_int), &points);
+  ocl_check(err, "kmeans_kernel 6th arg set");
+  err = clSetKernelArg(points_kernel, 7, sizeof(cl_int), &k);
   ocl_check(err, "kmeans_kernel 7th arg set");
   err =
       clEnqueueNDRangeKernel(que, points_kernel, 1, 0, gws, lws, 0, NULL, &ret);
@@ -103,21 +105,13 @@ cl_event update_centroids(cl_command_queue que, cl_kernel centroids_kernel,
   // printf("update centroids: %u | %zu = %zu\n", points, lws[0], gws[0]);
   cl_int err;
   cl_event ret;
-  err = clSetKernelArg(centroids_kernel, 0, sizeof(cl_mem), dataset);
-  ocl_check(err, "centroids_kernel 1st arg set");
-
-  err = clSetKernelArg(centroids_kernel, 1, sizeof(cl_mem), centroids);
+  err = clSetKernelArg(centroids_kernel, 0, sizeof(cl_mem), centroids);
   ocl_check(err, "centroids_kernel 2nd arg set");
-
-  err = clSetKernelArg(centroids_kernel, 2, sizeof(cl_mem), assignments);
-  ocl_check(err, "centroids_kernel 3rd arg set");
-  err = clSetKernelArg(centroids_kernel, 3, sizeof(cl_mem), cluster_sum);
+  err = clSetKernelArg(centroids_kernel, 1, sizeof(cl_mem), cluster_sum);
   ocl_check(err, "centroids_kernel 4th arg set");
-  err = clSetKernelArg(centroids_kernel, 4, sizeof(cl_mem), cluster_elements);
+  err = clSetKernelArg(centroids_kernel, 2, sizeof(cl_mem), cluster_elements);
   ocl_check(err, "centroids_kernel 5th arg set");
-  err = clSetKernelArg(centroids_kernel, 5, sizeof(cl_int), &points);
-  ocl_check(err, "centroids_kernel 7th arg set");
-  err = clSetKernelArg(centroids_kernel, 6, sizeof(cl_int), &k);
+  err = clSetKernelArg(centroids_kernel,3, sizeof(cl_int), &k);
   ocl_check(err, "centroids_kernel 8th arg set");
   err = clEnqueueNDRangeKernel(que, centroids_kernel, 1, 0, gws, lws, 1,
                                &update_points_evt, &ret);
@@ -188,11 +182,10 @@ int main(int argc, char **argv) {
 
   int *cluster_elements = malloc(k * sizeof(cl_int));
   /*
-  data is stored in the dataset as pairs x and y, like this:
+  data is stored in the dataset as double pairs xi yi and xi+1 yi+1 , like this:
 
-  0 [x0][y0]
-  1 [x1][y1]
-  2 [x2][y2]
+  0 [x0][y0][x1][y1]
+  1 [x2][y2][x3][y3]
   ...
   */
   // create all kernels
@@ -267,7 +260,7 @@ int main(int argc, char **argv) {
   }
   for (int i = 0; i < k; ++i)
     printf("Cluster %d has %d point(s)\n", i, cluster_elements[i]);
-
+  printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
   printf("update points %f ms\n", runtime_ms(update_points_evt));
   printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
 }

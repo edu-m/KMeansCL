@@ -12,7 +12,7 @@
 // we must take measurement of the time ONLY if the printf's are suppressed,
 // because terminal I/O time would invalidate the data
 #define SUPPRESS_PRINT 1
-#define FILEPATH "..//data_original.csv"
+#define FILEPATH "..//data_large.csv"
 
 void error(char *what) {
   fprintf(stderr, "%s\n", what);
