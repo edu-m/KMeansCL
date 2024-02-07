@@ -83,7 +83,7 @@ cl_event update_points(cl_command_queue que, cl_kernel points_kernel,
   ocl_check(err, "kmeans_kernel 4th arg set");
   err = clSetKernelArg(points_kernel, 4, sizeof(cl_mem), cluster_elements);
   ocl_check(err, "kmeans_kernel 5th arg set");
-err = clSetKernelArg(points_kernel, 5, sizeof(cl_float2)*k, NULL);
+  err = clSetKernelArg(points_kernel, 5, sizeof(cl_float2) * k, NULL);
   ocl_check(err, "kmeans_kernel 6th arg set");
   err = clSetKernelArg(points_kernel, 6, sizeof(cl_int), &points);
   ocl_check(err, "kmeans_kernel 6th arg set");
@@ -111,14 +111,13 @@ cl_event update_centroids(cl_command_queue que, cl_kernel centroids_kernel,
   ocl_check(err, "centroids_kernel 4th arg set");
   err = clSetKernelArg(centroids_kernel, 2, sizeof(cl_mem), cluster_elements);
   ocl_check(err, "centroids_kernel 5th arg set");
-  err = clSetKernelArg(centroids_kernel,3, sizeof(cl_int), &k);
+  err = clSetKernelArg(centroids_kernel, 3, sizeof(cl_int), &k);
   ocl_check(err, "centroids_kernel 8th arg set");
   err = clEnqueueNDRangeKernel(que, centroids_kernel, 1, 0, gws, lws, 1,
                                &update_points_evt, &ret);
   ocl_check(err, "enqueue centroids_kernel");
   return ret;
 }
-
 
 int main(int argc, char **argv) {
   if (argc < 3)
@@ -171,11 +170,11 @@ int main(int argc, char **argv) {
   for (int i = 0; i < k; ++i)
     assignments[i] = i;
   while (fgets(line, sizeof(line), fp) != NULL) {
-      sscanf(line, "%f,%f", &dataset[curr_row].x, &dataset[curr_row].y);
-      fgets(line, sizeof(line), fp);
-      sscanf(line, "%f,%f", &dataset[curr_row].z, &dataset[curr_row].w);
-      ++curr_row;
-    }
+    sscanf(line, "%f,%f", &dataset[curr_row].x, &dataset[curr_row].y);
+    fgets(line, sizeof(line), fp);
+    sscanf(line, "%f,%f", &dataset[curr_row].z, &dataset[curr_row].w);
+    ++curr_row;
+  }
 
 #endif
   cl_float2 *centroids = malloc(k * sizeof(cl_float2));
@@ -260,7 +259,12 @@ int main(int argc, char **argv) {
   }
   for (int i = 0; i < k; ++i)
     printf("Cluster %d has %d point(s)\n", i, cluster_elements[i]);
-  printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
-  printf("update points %f ms\n", runtime_ms(update_points_evt));
-  printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
+  float t0, t1, t2;
+  t0 = runtime_ms(assign_centroids_evt);
+  t1 = runtime_ms(update_points_evt) * 100;
+  t2 = runtime_ms(update_centroids_evt) * 100;
+  // printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
+  // printf("update points %f ms\n", runtime_ms(update_points_evt));
+  // printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
+  printf("%f + %f + %f = %f\n", t0, t1, t2, t0 + t1 + t2);
 }

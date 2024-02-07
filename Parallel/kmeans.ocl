@@ -24,8 +24,8 @@ void kernel assign_centroids(global float2 *restrict dataset, global float2 *res
 }
 
 void kernel update_points(
-    global float2 * restrict dataset,
-    global float2 * restrict centroids,
+    global const float2 * restrict dataset,
+    global const float2 * restrict centroids,
     global int * restrict assignments,
     global float2 * restrict cluster_sum,
     global int * restrict cluster_elements,
@@ -85,8 +85,8 @@ void kernel update_points(
 
 void kernel update_centroids(
                               global float2 * restrict centroids,
-                              global float2 * restrict cluster_sum,
-                              global int * restrict cluster_elements,
+                              global const float2 * restrict cluster_sum,
+                              global const int * restrict cluster_elements,
                               const int k) {
     /*
     2nd step: calculate the average of all points belonging to each cluster to compute the new centroid

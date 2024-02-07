@@ -153,7 +153,7 @@ data is stored in the dataset as interleaved x and y, like this:
   memset(cluster_elements, 0, k * sizeof(int));
   for (int i = 0; i < points; ++i) {
     ++cluster_elements[assignments[i]];
-#if SUPPRESS_PRINT
+#if !SUPPRESS_PRINT
     printf("point %d (%f, %f) is in cluster %d (with centroid (%f,%f))\n", i,
            dataset[i * 2], dataset[i * 2 + 1], assignments[i],
            centroids[assignments[i] * 2], centroids[assignments[i] * 2 + 1]);

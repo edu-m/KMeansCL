@@ -222,10 +222,9 @@ int main(int argc, char **argv) {
         que, update_points_kernel, &d_dataset, &d_centroids, &d_assignments,
         &d_cluster_sum, &d_cluster_elements, points, k, lws);
 
-    update_centroids_evt =
-        update_centroids(que, update_centroids_kernel,
-                         &d_cluster_sum, &d_cluster_elements,
-                         &d_centroids, points, k, update_points_evt, lws);
+    update_centroids_evt = update_centroids(
+        que, update_centroids_kernel, &d_cluster_sum, &d_cluster_elements,
+        &d_centroids, points, k, update_points_evt, lws);
   }
   clFinish(que);
 
@@ -245,7 +244,12 @@ int main(int argc, char **argv) {
   for (int i = 0; i < k; ++i)
     printf("Cluster %d has %d point(s)\n", i, cluster_elements[i]);
 #endif
-  printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
-  printf("update points %f ms\n", runtime_ms(update_points_evt));
-  printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
+  float t0, t1, t2;
+  t0 = runtime_ms(assign_centroids_evt);
+  t1 = runtime_ms(update_points_evt) * 100;
+  t2 = runtime_ms(update_centroids_evt) * 100;
+  // printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
+  // printf("update points %f ms\n", runtime_ms(update_points_evt));
+  // printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
+  printf("%f + %f + %f = %f\n", t0, t1, t2, t0 + t1 + t2);
 }
