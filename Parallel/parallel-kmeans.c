@@ -58,10 +58,26 @@ cl_event assign_centroids(cl_command_queue que,
   return ret;
 }
 
+cl_event reset_buffers(cl_command_queue que, cl_kernel reset_kernel,
+                       cl_mem *cluster_sum, cl_mem *cluster_elements, int k) {
+  size_t gws[] = {k};
+  cl_int err;
+  cl_event ret;
+  err = clSetKernelArg(reset_kernel, 0, sizeof(cl_mem), cluster_sum);
+  err = clSetKernelArg(reset_kernel, 1, sizeof(cl_mem), cluster_elements);
+  err = clSetKernelArg(reset_kernel, 2, sizeof(cl_int), &k);
+  ocl_check(err, "kmeans_kernel 1st arg set");
+  err = clEnqueueNDRangeKernel(que, reset_kernel, 1, NULL, gws, NULL, 0, NULL,
+                               &ret);
+  ocl_check(err, "enqueue assign_centroids");
+  return ret;
+}
+
 cl_event update_points(cl_command_queue que, cl_kernel points_kernel,
                        cl_mem *dataset, cl_mem *centroids, cl_mem *assignments,
                        cl_mem *cluster_sum, cl_mem *cluster_elements,
-                       int points, int k, int lws_arg) {
+                       int points, int k, cl_event reset_buffers_evt,
+                       int lws_arg) {
   size_t lws[] = {lws_arg};
   size_t gws[] = {round_mul_up(points, lws_arg)};
   // printf("update points: %u | %zu = %zu\n", points, lws[0], gws[0]);
@@ -85,8 +101,8 @@ cl_event update_points(cl_command_queue que, cl_kernel points_kernel,
   ocl_check(err, "kmeans_kernel 6th arg set");
   err = clSetKernelArg(points_kernel, 7, sizeof(cl_int), &k);
   ocl_check(err, "kmeans_kernel 7th arg set");
-  err =
-      clEnqueueNDRangeKernel(que, points_kernel, 1, 0, gws, lws, 0, NULL, &ret);
+  err = clEnqueueNDRangeKernel(que, points_kernel, 1, 0, gws, lws, 1,
+                               &reset_buffers_evt, &ret);
   ocl_check(err, "enqueue points_kernel");
   return ret;
 }
@@ -185,6 +201,7 @@ int main(int argc, char **argv) {
   // create all kernels
   cl_kernel assign_centroids_kernel =
       clCreateKernel(prog, "assign_centroids", &err);
+  cl_kernel reset_buffers_kernel = clCreateKernel(prog, "reset_buffers", &err);
   cl_kernel update_points_kernel = clCreateKernel(prog, "update_points", &err);
   cl_kernel update_centroids_kernel =
       clCreateKernel(prog, "update_centroids", &err);
@@ -204,10 +221,7 @@ int main(int argc, char **argv) {
   cl_mem d_cluster_elements =
       clCreateBuffer(ctx, CL_MEM_READ_WRITE, k * sizeof(cl_int), NULL, &err);
   ocl_check(err, "create d_dataset");
-  // write dataset data into device buffer
-  err =
-      clEnqueueWriteBuffer(que, d_dataset, CL_TRUE, 0,
-                           sizeof(cl_float2) * points, dataset, 0, NULL, NULL);
+
   ocl_check(err, "enqueue write buffer");
 
   ocl_check(err, "create assign_centroids_kernel");
@@ -216,20 +230,24 @@ int main(int argc, char **argv) {
 
   // clFinish(que);
 
-  cl_event update_centroids_evt, update_points_evt;
+  cl_event reset_buffers_evt, update_centroids_evt, update_points_evt;
   for (int i = 0; i < 100; ++i) {
+    reset_buffers_evt = reset_buffers(que, reset_buffers_kernel, &d_cluster_sum,
+                                      &d_cluster_elements, k);
     update_points_evt = update_points(
         que, update_points_kernel, &d_dataset, &d_centroids, &d_assignments,
-        &d_cluster_sum, &d_cluster_elements, points, k, lws);
+        &d_cluster_sum, &d_cluster_elements, points, k, reset_buffers_evt, lws);
 
     update_centroids_evt = update_centroids(
         que, update_centroids_kernel, &d_cluster_sum, &d_cluster_elements,
         &d_centroids, points, k, update_points_evt, lws);
   }
   clFinish(que);
+  cl_event d_centr_read_evt;
 
   clEnqueueReadBuffer(que, d_cluster_elements, CL_TRUE, 0, sizeof(cl_int) * k,
-                      cluster_elements, 1, &update_centroids_evt, NULL);
+                      cluster_elements, 1, &update_centroids_evt,
+                      &d_centr_read_evt);
 
   clEnqueueReadBuffer(que, d_centroids, CL_TRUE, 0, sizeof(cl_float2) * k,
                       centroids, 0, NULL, NULL);
@@ -244,12 +262,14 @@ int main(int argc, char **argv) {
   for (int i = 0; i < k; ++i)
     printf("Cluster %d has %d point(s)\n", i, cluster_elements[i]);
 #endif
-  float t0, t1, t2;
+  float t0, tr, t1, t2;
   t0 = runtime_ms(assign_centroids_evt);
+  tr = runtime_ms(reset_buffers_evt);
   t1 = runtime_ms(update_points_evt) * 100;
   t2 = runtime_ms(update_centroids_evt) * 100;
   // printf("assign centroids %f ms\n", runtime_ms(assign_centroids_evt));
   // printf("update points %f ms\n", runtime_ms(update_points_evt));
   // printf("update centroids %f ms\n", runtime_ms(update_centroids_evt));
-  printf("%f + %f + %f = %f\n", t0, t1, t2, t0 + t1 + t2);
+  printf("%fms + %fms + %fms + %fms = %fms\n", t0, tr, t1, t2,
+         t0 + tr + t1 + t2);
 }

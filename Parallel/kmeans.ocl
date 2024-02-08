@@ -1,6 +1,6 @@
-float euclidean_distance(float x0, float y0, float x1,
-                            float y1) {
-  return sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1));
+float euclidean_squared_distance(float2 p0, float2 p1) {
+  //return sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1));
+  return ((p0.x - p1.x)*(p0.x - p1.x) + (p0.y - p1.y) * (p0.y - p1.y));
 }
 
 inline void atomic_add_float2(global float2 * restrict dest, const float2 value) {
@@ -23,6 +23,18 @@ void kernel assign_centroids(global float2 *restrict dataset, global float2 *res
     // printf("%f %f\n",centroids[i].x, centroids[i].y);
 }
 
+void kernel reset_buffers(
+    global float2 * restrict cluster_sum,
+    global int * restrict cluster_elements,
+    const int k){
+    int gid = get_global_id(0);
+    if(gid >= k) 
+        return;
+    cluster_sum[gid] = (float2)0.0f;
+    cluster_elements[gid] = 0;
+    
+}
+
 void kernel update_points(
     global const float2 * restrict dataset,
     global const float2 * restrict centroids,
@@ -35,18 +47,20 @@ void kernel update_points(
 ) {
     int gid = get_global_id(0);
     int lid = get_local_id(0);
-
+    int kid = lid;
     if(gid >= points) 
         return;
     // wipe corresponding elements for both arrays to avoid 'memory' of past iterations
-    cluster_sum[gid] = 0.0f;
-    cluster_elements[gid] = 0;
+
     // for work-item specific elements we store them in private memory to reduce reads from global memory
     float2 p0 = dataset[gid];
     int assignment = assignments[gid];
+    int current = assignment;
    
-    if(lid < k)
-        lmem_centroids[lid] = centroids[lid];
+    while(kid < k){
+    lmem_centroids[kid] = centroids[kid];
+    kid += get_local_size(0);
+    }
 
     barrier(CLK_LOCAL_MEM_FENCE);
     /*
@@ -57,26 +71,16 @@ void kernel update_points(
     */
     // K-means clustering iterations
         // Compute distances and assign points to clusters
-        float distance = euclidean_distance(
-            p0.x, p0.y,
-            lmem_centroids[assignment].x, lmem_centroids[assignment].y
-        );
-
+        float distance = euclidean_squared_distance(p0,lmem_centroids[assignment]);
         for (int j = 0; j < k; ++j) {
-           
-            float ed = euclidean_distance(
-                p0.x, p0.y,
-                lmem_centroids[j].x, lmem_centroids[j].y
-            );
-            // printf("point %d has distance %f with centroid %d, current assignment is %d with distance %f",
-            //               gid,            ed,              j,            assignments[gid],     distance);
-
+            float ed = euclidean_squared_distance(p0,lmem_centroids[j]);
             if (ed < distance) {
-                //printf("point %d (%f %f): cluster was updated from %d (%f %f) to %d (%f %f) with a reduction in distance of %f",gid,p0.x,p0.y,assignments[gid],centroids[assignments[gid]].x,centroids[assignments[gid]].y,j,centroids[j].x,centroids[j].y,distance-ed);
                 distance = ed;
-                assignment = assignments[gid] = j;
+                assignment = j;
             }
         }
+    if(current != assignment)
+        assignments[gid] = assignment;
     atomic_add_float2(&cluster_sum[assignment], p0);
     atomic_inc(&cluster_elements[assignment]);
     }
@@ -92,8 +96,8 @@ void kernel update_centroids(
     */
     int gid = get_global_id(0);
     if(gid >= k) return; 
-
-    if (cluster_elements[gid] > 0) 
-        centroids[gid] = cluster_sum[gid] / (float)cluster_elements[gid];
+    int ce = cluster_elements[gid];
+    if (ce > 0) 
+        centroids[gid] = cluster_sum[gid] / (float)ce;
 }
 
